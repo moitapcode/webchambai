@@ -1,0 +1,1 @@
+{"tfjsVersion":"1.7.4","tmVersion":"0.8.6","packageVersion":"0.8.6","packageName":"@teachablemachine/pose","timeStamp":"2026-10-29T18:12:09.965Z","userMetadata":{},"modelName":"my-pose-model","labels":["Đạt về nét vẽ ","Chưa đạt về nét vẽ "],"modelSettings":{"posenet":{"architecture":"MobileNetV1","outputStride":16,"inputResolution":257,"multiplier":0.75}}}
