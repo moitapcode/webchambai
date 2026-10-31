@@ -24,7 +24,6 @@
     <br>
     <img id="preview" alt="Ảnh tải lên"/>
     
-    <!-- Khu vực hiển thị kết quả của 3 mô hình -->
     <div class="results-container">
         <div class="model-result">
             <div class="model-title">Mô hình 1</div>
@@ -50,14 +49,14 @@
 
         async function init() {
             try {
-                // Tải song song cả 3 mô hình để tiết kiệm thời gian
+                // Tải song song cả 3 mô hình
                 [model1, model2, model3] = await Promise.all([
                     tmImage.load(URL1 + "model.json", URL1 + "metadata.json"),
                     tmImage.load(URL2 + "model.json", URL2 + "metadata.json"),
                     tmImage.load(URL3 + "model.json", URL3 + "metadata.json")
                 ]);
 
-                // Cho phép người dùng tải ảnh lên sau khi mô hình đã sẵn sàng
+                // Bật nút tải ảnh sau khi mô hình sẵn sàng
                 document.getElementById("status").style.color = "green";
                 document.getElementById("status").innerText = "Đã tải xong 3 mô hình. Hãy chọn ảnh để kiểm tra.";
                 document.getElementById("imageUpload").disabled = false;
@@ -75,7 +74,6 @@
                 imgElement.style.display = 'block';
                 
                 imgElement.onload = async function() {
-                    // Xóa kết quả cũ trước khi dự đoán mới
                     document.getElementById("label-container-1").innerHTML = "Đang phân tích...";
                     document.getElementById("label-container-2").innerHTML = "Đang phân tích...";
                     document.getElementById("label-container-3").innerHTML = "Đang phân tích...";
@@ -86,23 +84,18 @@
         });
 
         async function predict(imageElement) {
-            // Chạy dự đoán trên cả 3 mô hình
             const predictions1 = await model1.predict(imageElement);
             const predictions2 = await model2.predict(imageElement);
             const predictions3 = await model3.predict(imageElement);
             
-            // Hiển thị kết quả Mô hình 1
             displayResults(predictions1, "label-container-1");
-            // Hiển thị kết quả Mô hình 2
             displayResults(predictions2, "label-container-2");
-            // Hiển thị kết quả Mô hình 3
             displayResults(predictions3, "label-container-3");
         }
 
-        // Hàm phụ trợ để in kết quả ra HTML
         function displayResults(predictions, containerId) {
             const container = document.getElementById(containerId);
-            container.innerHTML = ""; // Xóa chữ "Đang phân tích..."
+            container.innerHTML = ""; 
             
             for (let i = 0; i < predictions.length; i++) {
                 const text = predictions[i].className + ": " + (predictions[i].probability * 100).toFixed(2) + "%";
@@ -112,7 +105,6 @@
             }
         }
 
-        // Khởi chạy ngay khi mở trang
         init();
     </script>
 </body>
