@@ -1,0 +1,243 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>AI Chấm Bài</title>
+    <!-- Thư viện TensorFlow và Teachable Machine -->
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@latest/dist/tf.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@teachablemachine/image@latest/dist/teachablemachine-image.min.js"></script>
+    <style>
+        :root {
+            --primary: #4F46E5;
+            --bg: #F3F4F6;
+            --text: #1F2937;
+            --white: #FFFFFF;
+        }
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+        body { background-color: var(--bg); color: var(--text); padding-bottom: 70px; }
+        
+        /* Header */
+        .header { background-color: var(--primary); color: var(--white); text-align: center; padding: 15px; font-size: 1.2rem; font-weight: bold; position: sticky; top: 0; z-index: 10; }
+        
+        /* Tabs */
+        .tab-content { display: none; padding: 15px; }
+        .tab-content.active { display: block; }
+        
+        /* Form & Inputs */
+        .form-group { margin-bottom: 15px; background: var(--white); padding: 15px; border-radius: 10px; box-shadow: 0 2px 5px rgba(0,0,0,0.05); }
+        .form-group label { display: block; margin-bottom: 5px; font-weight: bold; font-size: 0.9rem; }
+        .form-group input { width: 100%; padding: 10px; border: 1px solid #D1D5DB; border-radius: 5px; margin-bottom: 10px; }
+        .btn { width: 100%; background-color: var(--primary); color: var(--white); padding: 12px; border: none; border-radius: 5px; font-size: 1rem; font-weight: bold; cursor: pointer; text-align: center; }
+        .btn:disabled { background-color: #9CA3AF; }
+        
+        /* Camera Area */
+        #webcam-container { width: 100%; aspect-ratio: 3/4; background: #000; border-radius: 10px; overflow: hidden; position: relative; margin-bottom: 15px; display: flex; align-items: center; justify-content: center; }
+        #webcam-container video { width: 100%; height: 100%; object-fit: cover; }
+        select { width: 100%; padding: 12px; border-radius: 5px; border: 1px solid #D1D5DB; margin-bottom: 15px; font-size: 1rem; background: var(--white); }
+        
+        /* Result Area */
+        #result-container { background: var(--white); padding: 15px; border-radius: 10px; margin-top: 15px; box-shadow: 0 2px 5px rgba(0,0,0,0.05); min-height: 80px; }
+        .result-item { display: flex; justify-content: space-between; margin-bottom: 8px; font-size: 1.1rem; }
+        .result-item span:last-child { font-weight: bold; color: var(--primary); }
+        
+        /* Bottom Navigation */
+        .bottom-nav { position: fixed; bottom: 0; left: 0; right: 0; background: var(--white); display: flex; box-shadow: 0 -2px 10px rgba(0,0,0,0.1); z-index: 100; }
+        .nav-item { flex: 1; text-align: center; padding: 15px 0; font-weight: bold; color: #6B7280; cursor: pointer; border-top: 3px solid transparent; }
+        .nav-item.active { color: var(--primary); border-top-color: var(--primary); }
+    </style>
+</head>
+<body>
+
+    <div class="header">Hệ Thống Chấm Bài AI</div>
+
+    <!-- TAB CHẤM BÀI -->
+    <div id="tab-scan" class="tab-content active">
+        <select id="model-select">
+            <option value="">-- Vui lòng qua tab Cài đặt để thêm Model --</option>
+        </select>
+        
+        <div id="webcam-container">
+            <video id="webcam-video" autoplay playsinline></video>
+        </div>
+        
+        <button id="btn-scan" class="btn" onclick="predict()" disabled>Chụp & Đánh Giá</button>
+        
+        <div id="result-container">
+            <i>Kết quả đánh giá sẽ hiển thị ở đây...</i>
+        </div>
+    </div>
+
+    <!-- TAB CÀI ĐẶT -->
+    <div id="tab-settings" class="tab-content">
+        <div class="form-group">
+            <label>Model 1 (Link Teachable Machine)</label>
+            <input type="text" id="model1-name" placeholder="Tên bài (VD: Toán bài 1)">
+            <input type="text" id="model1-url" placeholder="https://teachablemachine.withgoogle.com/models/...">
+        </div>
+        <div class="form-group">
+            <label>Model 2 (Link Teachable Machine)</label>
+            <input type="text" id="model2-name" placeholder="Tên bài (VD: Lý bài 2)">
+            <input type="text" id="model2-url" placeholder="https://teachablemachine.withgoogle.com/models/...">
+        </div>
+        <div class="form-group">
+            <label>Model 3 (Link Teachable Machine)</label>
+            <input type="text" id="model3-name" placeholder="Tên bài (VD: Hóa bài 3)">
+            <input type="text" id="model3-url" placeholder="https://teachablemachine.withgoogle.com/models/...">
+        </div>
+        <button class="btn" onclick="saveSettings()">Lưu Cấu Hình</button>
+    </div>
+
+    <!-- BOTTOM NAV -->
+    <div class="bottom-nav">
+        <div class="nav-item active" onclick="switchTab('scan', this)">📷 Chấm Bài</div>
+        <div class="nav-item" onclick="switchTab('settings', this)">⚙️ Cài Đặt</div>
+    </div>
+
+    <script>
+        let model, maxPredictions;
+        const videoElement = document.getElementById('webcam-video');
+        const btnScan = document.getElementById('btn-scan');
+        const selectModel = document.getElementById('model-select');
+        let isModelLoaded = false;
+
+        // 1. Chuyển đổi giữa các Tab
+        function switchTab(tabId, el) {
+            document.querySelectorAll('.tab-content').forEach(tab => tab.classList.remove('active'));
+            document.querySelectorAll('.nav-item').forEach(nav => nav.classList.remove('active'));
+            
+            document.getElementById('tab-' + tabId).classList.add('active');
+            el.classList.add('active');
+
+            if(tabId === 'scan') loadSelectOptions();
+        }
+
+        // 2. Lưu cài đặt vào bộ nhớ đệm (localStorage)
+        function saveSettings() {
+            const models = [
+                { name: document.getElementById('model1-name').value, url: document.getElementById('model1-url').value },
+                { name: document.getElementById('model2-name').value, url: document.getElementById('model2-url').value },
+                { name: document.getElementById('model3-name').value, url: document.getElementById('model3-url').value }
+            ];
+            localStorage.setItem('ai_models', JSON.stringify(models));
+            alert("Đã lưu cấu hình thành công!");
+            loadSelectOptions();
+        }
+
+        // 3. Khôi phục cài đặt khi mở web
+        function loadSettings() {
+            const saved = localStorage.getItem('ai_models');
+            if(saved) {
+                const models = JSON.parse(saved);
+                document.getElementById('model1-name').value = models[0].name || '';
+                document.getElementById('model1-url').value = models[0].url || '';
+                document.getElementById('model2-name').value = models[1].name || '';
+                document.getElementById('model2-url').value = models[1].url || '';
+                document.getElementById('model3-name').value = models[2].name || '';
+                document.getElementById('model3-url').value = models[2].url || '';
+            }
+            loadSelectOptions();
+        }
+
+        // 4. Cập nhật danh sách chọn Model bên tab Chấm bài
+        function loadSelectOptions() {
+            const saved = localStorage.getItem('ai_models');
+            selectModel.innerHTML = '<option value="">-- Chọn bài kiểm tra --</option>';
+            if(saved) {
+                const models = JSON.parse(saved);
+                models.forEach((m, index) => {
+                    if(m.url && m.name) {
+                        let opt = document.createElement('option');
+                        opt.value = m.url;
+                        opt.textContent = m.name;
+                        selectModel.appendChild(opt);
+                    }
+                });
+            }
+        }
+
+        // 5. Tải Model AI khi người dùng chọn từ danh sách
+        selectModel.addEventListener('change', async function() {
+            const url = this.value;
+            if(!url) {
+                btnScan.disabled = true;
+                return;
+            }
+            
+            btnScan.textContent = "Đang tải Model AI...";
+            btnScan.disabled = true;
+            
+            // Xử lý URL đúng định dạng của Teachable Machine
+            const URL = url.endsWith('/') ? url : url + '/';
+            const modelURL = URL + "model.json";
+            const metadataURL = URL + "metadata.json";
+
+            try {
+                model = await tmImage.load(modelURL, metadataURL);
+                maxPredictions = model.getTotalClasses();
+                isModelLoaded = true;
+                btnScan.textContent = "Chụp & Đánh Giá";
+                btnScan.disabled = false;
+            } catch (error) {
+                alert("Lỗi tải Model. Vui lòng kiểm tra lại Link chia sẻ.");
+                btnScan.textContent = "Lỗi tải Model";
+            }
+        });
+
+        // 6. Khởi động Camera điện thoại (Ưu tiên camera sau)
+        async function setupCamera() {
+            if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+                try {
+                    const stream = await navigator.mediaDevices.getUserMedia({
+                        video: { facingMode: 'environment' } // Dùng camera sau
+                    });
+                    videoElement.srcObject = stream;
+                } catch (error) {
+                    document.getElementById('result-container').innerHTML = 
+                        "<p style='color:red;'>Không thể mở Camera. Hãy chắc chắn bạn đã cấp quyền và truy cập bằng đường link https://.</p>";
+                }
+            }
+        }
+
+        // 7. Chụp ảnh từ video và dự đoán
+        async function predict() {
+            if(!isModelLoaded) return;
+            
+            btnScan.textContent = "Đang phân tích...";
+            btnScan.disabled = true;
+
+            // Đưa frame hiện tại của video vào canvas ẩn để Model xử lý
+            const canvas = document.createElement('canvas');
+            canvas.width = videoElement.videoWidth;
+            canvas.height = videoElement.videoHeight;
+            canvas.getContext('2d').drawImage(videoElement, 0, 0);
+
+            // Dự đoán
+            const prediction = await model.predict(canvas);
+            
+            // Hiển thị kết quả
+            let resultHTML = '';
+            // Sắp xếp giảm dần theo xác suất
+            prediction.sort((a, b) => b.probability - a.probability);
+            
+            for (let i = 0; i < maxPredictions; i++) {
+                let percent = (prediction[i].probability * 100).toFixed(1) + "%";
+                resultHTML += `<div class="result-item">
+                    <span>${prediction[i].className}</span>
+                    <span>${percent}</span>
+                </div>`;
+            }
+            document.getElementById('result-container').innerHTML = resultHTML;
+            
+            btnScan.textContent = "Chụp & Đánh Giá (Lần nữa)";
+            btnScan.disabled = false;
+        }
+
+        // Chạy ngay khi tải trang
+        window.onload = function() {
+            loadSettings();
+            setupCamera();
+        }
+    </script>
+</body>
+</html>
